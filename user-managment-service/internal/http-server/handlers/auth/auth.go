@@ -1,20 +1,21 @@
 package auth
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"user-managment-service/internal/config"
 	"user-managment-service/internal/lib/logger/sl"
 	resp "user-managment-service/internal/lib/response"
 	"user-managment-service/internal/models"
+	service "user-managment-service/internal/service/auth"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Service interface {
-	FindUser(username string, passHash []byte) (bool, error)
+	SignUp(username string, password string) (string, error)
 }
 
 type Handler struct {
@@ -46,38 +47,31 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 	log := h.log.With(slog.String("op", op))
 
 	var user models.User
-	err := render.DecodeJSON(r.Body, user)
+	err := render.DecodeJSON(r.Body, &user)
 	if err != nil {
 		log.Error("failed to signup user", sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
-	if user.Username != "" && user.Password != "" {
+	if user.Username == "" || user.Password == "" {
 		log.Debug("failed to signup user: invalid credentials")
 		render.JSON(w, r, resp.Err("invalid credentials"))
 		return
 	}
 
-	passHash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	uuid, err := h.service.SignUp(user.Username, user.Password)
 	if err != nil {
-		log.Error("failed to signup user", sl.Error(err))
+		log.Debug("failed to signup user", sl.Error(err))
+		if errors.As(err, &service.ErrUserExists) {
+			render.JSON(w, r, resp.Err("user already exists"))
+			return
+		}
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
-	found, err := h.service.FindUser(user.Username, passHash)
-	if err != nil {
-		log.Error("failed to signup user", sl.Error(err))
-		render.JSON(w, r, resp.Err("internal error"))
-		return
-	}
-	if !found {
-		log.Debug("failed to signup user: user not found")
-		render.JSON(w, r, resp.Err("user not found"))
-		return
-	}
-
+	render.JSON(w, r, models.User{UUID: uuid})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {

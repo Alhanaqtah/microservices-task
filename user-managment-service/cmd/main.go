@@ -33,6 +33,7 @@ func main() {
 	storage, err := postgres.New(cfg.Storage)
 	if err != nil {
 		log.Error("failed to init storage", sl.Error(err))
+		os.Exit(1)
 	}
 
 	// Cash
@@ -56,9 +57,9 @@ func main() {
 	auth := authhandler.New(log, authService, cfg.Token)
 
 	r.HandleFunc("/healthcheck", healthcheck.Register())
-	r.Route("/users", nil)
+	// r.Route("/users", nil)
 	r.Route("/auth", auth.Register())
-	r.Route("/user", nil)
+	// r.Route("/user", nil)
 
 	// Server
 	srv := http.Server{
