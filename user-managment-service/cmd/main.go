@@ -20,6 +20,7 @@ import (
 	"user-managment-service/internal/storage/storage/postgres"
 
 	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 )
 
 func main() {
@@ -37,22 +38,24 @@ func main() {
 	}
 
 	// Cash
-	cash := redis.New(cfg.Cash)
-	if cash == nil {
-		log.Error("failed to init cash")
+	cash, err := redis.New(cfg.Cash)
+	if err != nil {
+		log.Error("failed to init cash", sl.Error(err))
+		os.Exit(1)
 	}
 
 	// Broker
-	broker, err := rabbitmq.New(cfg.Broker)
+	broker := rabbitmq.Broker{} // rabbitmq.New(cfg.Broker)
 	if err != nil {
 		log.Error("failed to init message broker", sl.Error(err))
 	}
 
 	// Service layer
-	authService := authservice.New(log, storage, cash, broker)
+	authService := authservice.New(log, storage, cash, broker, cfg.Token)
 
 	// Constroller layer
 	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
 
 	auth := authhandler.New(log, authService, cfg.Token)
 

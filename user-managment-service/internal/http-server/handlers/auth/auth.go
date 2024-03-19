@@ -15,7 +15,9 @@ import (
 )
 
 type Service interface {
-	SignUp(username string, password string) (string, error)
+	SignUp(username, password string) (string, error)
+	Login(username, password string) (string, string, error)
+	RefreshTokens(token string) (string, string, error)
 }
 
 type Handler struct {
@@ -75,10 +77,67 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.auth.login"
 
+	log := h.log.With(slog.String("op", op))
+
+	var user models.User
+	render.DecodeJSON(r.Body, &user)
+
+	if user.Username == "" && user.Password == "" {
+		log.Debug("invalid credentials")
+		render.JSON(w, r, resp.Err("invalid credentials"))
+	}
+
+	accessToken, refreshToken, err := h.service.Login(user.Username, user.Password)
+	if err != nil {
+		log.Error("failed to login user", sl.Error(err))
+		if errors.As(err, &service.ErrUserNotFound) {
+			render.JSON(w, r, resp.Err("user not found"))
+			return
+		}
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	render.JSON(w, r, resp.Tokens{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	})
 }
 
 func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.auth.refreshToken"
+
+	log := h.log.With(slog.String("op", op))
+
+	type RefreshTokenRequest struct {
+		Token string `json:"refreshToken"`
+	}
+
+	var oldRefreshToken RefreshTokenRequest
+	err := render.DecodeJSON(r.Body, &oldRefreshToken)
+	if err != nil {
+		log.Debug("failed to refresh tokens", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	accessToken, refreshToken, err := h.service.RefreshTokens(oldRefreshToken.Token)
+	if err != nil {
+		log.Error("failed to refresh tokens", sl.Error(err))
+		if errors.As(err, &service.ErrTokenRevoked) {
+			render.JSON(w, r, resp.Err("token revoked"))
+			return
+		}
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	render.JSON(w, r, resp.Tokens{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	})
 
 }
 

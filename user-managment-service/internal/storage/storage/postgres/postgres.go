@@ -20,7 +20,7 @@ type Storage struct {
 func New(cfg config.Storage) (*Storage, error) {
 	const op = "storage.postgres.New"
 
-	pool, err := pgx.Connect(context.Background(), fmt.Sprintf("postgresql://%s:%s@%s:%s/?sslmode=disable", cfg.User, cfg.Password, cfg.NetLoc, cfg.Port))
+	pool, err := pgx.Connect(context.Background(), cfg.ConnStr)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -62,8 +62,60 @@ func New(cfg config.Storage) (*Storage, error) {
 	return &Storage{pool: pool}, nil
 }
 
-func (s *Storage) User(ctx context.Context, username string) (*models.User, error) {
-	const op = "storage.postgres.User"
+func (s *Storage) UserByUUID(ctx context.Context, username string) (*models.User, error) {
+	const op = "storage.postgres.UserByUUID"
+
+	row := s.pool.QueryRow(ctx, `
+		SELECT
+			id,
+			name,
+			surname,
+			username,
+			pass_hash,
+			phone_number,
+			email,
+			role,
+			group_id,
+			image_s3_path,
+			is_blocked,
+			created_at,
+			modified_at
+		FROM users WHERE id=$1`, username,
+	)
+
+	var groupID sql.NullInt64
+	var user models.User
+	err := row.Scan(
+		&user.UUID,
+		&user.Name,
+		&user.Surname,
+		&user.Username,
+		&user.PassHash,
+		&user.PhoneNumber,
+		&user.Email,
+		&user.Role,
+		&groupID,
+		&user.ImageS3Path,
+		&user.IsBlocked,
+		&user.CreatedAt,
+		&user.ModifiedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+		}
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if groupID.Valid {
+		user.GroupID = groupID.Int64
+	}
+
+	return &user, nil
+}
+
+func (s *Storage) UserByName(ctx context.Context, username string) (*models.User, error) {
+	const op = "storage.postgres.UserByName"
 
 	row := s.pool.QueryRow(ctx, `
 		SELECT

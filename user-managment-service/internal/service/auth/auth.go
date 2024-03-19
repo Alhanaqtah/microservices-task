@@ -6,45 +6,54 @@ import (
 	"fmt"
 	"log/slog"
 
+	"user-managment-service/internal/config"
+	"user-managment-service/internal/lib/jwt"
 	"user-managment-service/internal/models"
 	"user-managment-service/internal/storage/storage"
 
+	gojwt "github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	ErrUserNotFound = errors.New("user not found")
 	ErrUserExists   = errors.New("user already exists")
+	ErrTokenRevoked = errors.New("token revoked")
 )
 
 type Storage interface {
-	User(ctx context.Context, username string) (*models.User, error)
+	UserByName(ctx context.Context, username string) (*models.User, error)
+	UserByUUID(ctx context.Context, uuid string) (*models.User, error)
 	CreateNewUser(ctx context.Context, username string, passHash []byte) (string, error)
 }
 
 type Cash interface {
+	AddToBlaclist(ctx context.Context, token string) error
+	SearchInBlacklist(ctx context.Context, token string) (bool, error)
 }
 
 type Broker interface {
 }
 
 type Service struct {
-	log     *slog.Logger
-	storage Storage
-	cash    Cash
-	broker  Broker
+	log      *slog.Logger
+	storage  Storage
+	cash     Cash
+	broker   Broker
+	tokenCfg config.Token
 }
 
-func New(log *slog.Logger, storage Storage, cash Cash, broker Broker) *Service {
+func New(log *slog.Logger, storage Storage, cash Cash, broker Broker, token config.Token) *Service {
 	return &Service{
-		log:     log,
-		storage: storage,
-		cash:    cash,
-		broker:  broker,
+		log:      log,
+		storage:  storage,
+		cash:     cash,
+		broker:   broker,
+		tokenCfg: token,
 	}
 }
 
-func (s *Service) SignUp(username string, password string) (string, error) {
+func (s *Service) SignUp(username, password string) (string, error) {
 	const op = "service.auth.SignUp"
 
 	_ = s.log.With(slog.String("op", op))
@@ -52,7 +61,7 @@ func (s *Service) SignUp(username string, password string) (string, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	u, err := s.storage.User(ctx, username)
+	u, err := s.storage.UserByName(ctx, username)
 	if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
@@ -71,4 +80,88 @@ func (s *Service) SignUp(username string, password string) (string, error) {
 	}
 
 	return uuid, nil
+}
+
+func (s *Service) Login(username, password string) (string, string, error) {
+	const op = "service.auth.Login"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	user, err := s.storage.UserByName(ctx, username)
+	if err != nil {
+		if errors.As(err, &storage.ErrUserNotFound) {
+			return "", "", fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+		}
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	accessToken, err := jwt.NewAccessToken(user, s.tokenCfg)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	refreshToken, err := jwt.NewRefreshToken(user, s.tokenCfg)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (s *Service) RefreshTokens(token string) (string, string, error) {
+	const op = "service.auth.RefreshTokens"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Search token in blacklist
+	found, err := s.cash.SearchInBlacklist(ctx, token)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+	if found {
+		return "", "", fmt.Errorf("%s: %w", op, ErrTokenRevoked)
+	}
+
+	// Add old token to blacklist
+	err = s.cash.AddToBlaclist(ctx, token)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	// Parse refresh token to get it's claims
+	jwtToken, err := gojwt.Parse(token, func(t *gojwt.Token) (interface{}, error) {
+		return []byte(s.tokenCfg.JWT.Secret), nil
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+	claims := jwtToken.Claims.(gojwt.MapClaims)
+
+	// Get UUID from token's claims
+	uuid, err := jwt.GetClaim(claims, "sub")
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	// Get user info to form tokens
+	user, err := s.storage.UserByUUID(ctx, uuid)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	// Form new access token
+	accessToken, err := jwt.NewAccessToken(user, s.tokenCfg)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	// Form new refresh token
+	refreshToken, err := jwt.NewRefreshToken(user, s.tokenCfg)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return accessToken, refreshToken, nil
 }

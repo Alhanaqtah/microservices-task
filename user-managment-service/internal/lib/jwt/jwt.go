@@ -1,34 +1,83 @@
 package jwt
 
-/*
 import (
-	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
+	"user-managment-service/internal/config"
+	"user-managment-service/internal/models"
 
-	"github.com/go-chi/jwtauth/v5"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func NewToken(user models.User, duration time.Duration, secret string) (string, error) {
+func NewAccessToken(user *models.User, cfg config.Token) (string, error) {
+	const op = "NewAccessToken"
+
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	claims := token.Claims.(jwt.MapClaims)
-	claims["uid"] = user.ID
-	claims["exp"] = time.Now().Add(duration).Unix()
+	claims["sub"] = user.UUID
+	claims["role"] = user.Role
+	claims["exp"] = time.Now().Add(cfg.JWT.TTL).Unix()
 
-	tokenString, err := token.SignedString([]byte(secret))
+	tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	return tokenString, nil
 }
 
-func CheckClaim(ctx context.Context, claim, expectedClaim string) (bool, error) {
+func NewRefreshToken(user *models.User, cfg config.Token) (string, error) {
+	const op = "NewRefreshToken"
+
+	token := jwt.New(jwt.SigningMethodHS256)
+
+	claims := token.Claims.(jwt.MapClaims)
+	claims["sub"] = user.UUID
+	claims["exp"] = time.Now().Add(cfg.Refresh.TTL).Unix()
+
+	tokenString, err := token.SignedString([]byte(cfg.JWT.Secret))
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return tokenString, nil
+}
+
+func GetClaim(claims map[string]interface{}, claim string) (string, error) {
+	const op = "GetClaim"
+
+	log.Printf("CLAIMS: %#v", claims)
+
+	c, ok := claims[claim]
+	if !ok {
+		return "", fmt.Errorf("%s: %w", op, errors.New("claim not found"))
+	}
+
+	var res string
+	switch c.(type) {
+	case float64:
+		cf, ok := c.(float64)
+		if !ok {
+			return "", fmt.Errorf("%s: %w", op, errors.New("failed to extract string from claim"))
+		}
+
+		res = strconv.FormatFloat(cf, 'g', -1, 64)
+	case string:
+		res, ok = c.(string)
+		if !ok {
+			return "", fmt.Errorf("%s: %w", op, errors.New("failed to extract string from claim"))
+		}
+	}
+
+	return res, nil
+}
+
+/* func CheckClaim(ctx context.Context, claim, expectedClaim string) (bool, error) {
 	const op = "CheckClaim"
 
 	_, claims, err := jwtauth.FromContext(ctx)

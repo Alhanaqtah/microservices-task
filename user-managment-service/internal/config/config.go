@@ -25,10 +25,7 @@ type HTTPServer struct {
 }
 
 type Storage struct {
-	User     string `envconfig:"DB_USER"`
-	Password string `envconfig:"DB_PASSWORD"`
-	NetLoc   string `envconfig:"DB_NETLOC"`
-	Port     string `envconfig:"DB_PORT"`
+	ConnStr string `envconfig:"DB_CONN_STR"`
 }
 
 type Cash struct {
@@ -38,10 +35,7 @@ type Cash struct {
 }
 
 type Broker struct {
-	User      string `envconfig:"BROKER_USER"`
-	Password  string `envconfig:"BROKER_PASSWORD"`
-	Host      string `envconfig:"BROKER_HOST"`
-	Port      string `envconfig:"BROKER_PORT"`
+	ConnStr   string `envconfig:"BROKER_CONN_STR"`
 	QueueName string `envconfig:"QUEUE_NAME"`
 }
 

@@ -1,7 +1,6 @@
 package rabbitmq
 
 import (
-	"fmt"
 	"user-managment-service/internal/config"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -12,7 +11,7 @@ type Broker struct {
 }
 
 func New(cfg config.Broker) (*Broker, error) {
-	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:%s", cfg.User, cfg.Password, cfg.Host, cfg.Port))
+	conn, err := amqp.Dial(cfg.ConnStr)
 	if err != nil {
 		return nil, err
 	}
