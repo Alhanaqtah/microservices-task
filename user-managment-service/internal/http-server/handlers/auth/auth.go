@@ -15,9 +15,10 @@ import (
 )
 
 type Service interface {
-	SignUp(username, email, password string) (string, error)
+	SignUp(username, email, password string) error
 	Login(username, password string) (string, string, error)
-	RefreshTokens(token string) (string, string, error)
+	RefreshToken(token string) (string, string, error)
+	ResetPassword(email string) error
 }
 
 type Handler struct {
@@ -62,7 +63,7 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uuid, err := h.service.SignUp(user.Username, user.Email, user.Password)
+	err = h.service.SignUp(user.Username, user.Email, user.Password)
 	if err != nil {
 		log.Debug("failed to signup user", sl.Error(err))
 		if errors.As(err, &service.ErrUserExists) {
@@ -73,7 +74,7 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render.JSON(w, r, models.User{UUID: uuid})
+	render.JSON(w, r, resp.Ok())
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +124,7 @@ func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.service.RefreshTokens(oldRefreshToken.Token)
+	accessToken, refreshToken, err := h.service.RefreshToken(oldRefreshToken.Token)
 	if err != nil {
 		log.Error("failed to refresh tokens", sl.Error(err))
 		if errors.As(err, &service.ErrTokenRevoked) {
@@ -138,9 +139,36 @@ func (h *Handler) refreshToken(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
-
 }
 
 func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.auth.resetPassword"
 
+	log := h.log.With(slog.String("op", op))
+
+	var user models.User
+	err := render.DecodeJSON(r.Body, &user)
+	if err != nil {
+		log.Error("failed to reset password", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	if user.Email == "" {
+		log.Debug("invalid credentials")
+		render.JSON(w, r, resp.Err("invalid credentials"))
+	}
+
+	err = h.service.ResetPassword(user.Email)
+	if err != nil {
+		log.Error("failed to reset password", sl.Error(err))
+		if errors.As(err, &service.ErrEmailNotFound) {
+			render.JSON(w, r, resp.Err("email not found"))
+			return
+		}
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	render.JSON(w, r, resp.Ok())
 }

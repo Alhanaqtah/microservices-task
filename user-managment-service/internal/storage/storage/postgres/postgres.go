@@ -166,15 +166,25 @@ func (s *Storage) UserByName(ctx context.Context, username string) (*models.User
 	return &user, nil
 }
 
-func (s *Storage) CreateNewUser(ctx context.Context, username string, email string, passHash []byte) (string, error) {
-	const op = "storage.postgres.CreateNewUser"
+func (s *Storage) SearchEmail(ctx context.Context, email string) (bool, error) {
+	const op = "storage.postgres.SearchEmail"
 
-	var id string
-
-	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, email, pass_hash) VALUES ($1, $2, $3) RETURNING id`, username, email, passHash).Scan(&id)
+	var found bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT username FROM users WHERE email=$1)`, email).Scan(&found)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", op, err)
+		return false, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return id, nil
+	return found, nil
+}
+
+func (s *Storage) CreateNewUser(ctx context.Context, username string, email string, passHash []byte) error {
+	const op = "storage.postgres.CreateNewUser"
+
+	_, err := s.pool.Exec(ctx, `INSERT INTO users (username, email, pass_hash) VALUES ($1, $2, $3)`, username, email, passHash)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }

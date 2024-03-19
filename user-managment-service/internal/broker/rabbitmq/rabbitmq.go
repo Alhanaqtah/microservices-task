@@ -1,13 +1,16 @@
 package rabbitmq
 
 import (
+	"context"
+	"fmt"
 	"user-managment-service/internal/config"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Broker struct {
-	ch *amqp.Channel
+	ch        *amqp.Channel
+	queueName string
 }
 
 func New(cfg config.Broker) (*Broker, error) {
@@ -33,5 +36,28 @@ func New(cfg config.Broker) (*Broker, error) {
 		return nil, err
 	}
 
-	return &Broker{ch: ch}, nil
+	return &Broker{
+		ch:        ch,
+		queueName: cfg.QueueName,
+	}, nil
+}
+
+func (b *Broker) ResetPassword(ctx context.Context, email string) error {
+	const op = "ResetPassword"
+
+	err := b.ch.PublishWithContext(ctx,
+		"",
+		b.queueName,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(email),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }

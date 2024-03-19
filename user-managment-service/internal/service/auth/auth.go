@@ -16,15 +16,17 @@ import (
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
-	ErrUserExists   = errors.New("user already exists")
-	ErrTokenRevoked = errors.New("token revoked")
+	ErrUserNotFound  = errors.New("user not found")
+	ErrUserExists    = errors.New("user already exists")
+	ErrTokenRevoked  = errors.New("token revoked")
+	ErrEmailNotFound = errors.New("email not found")
 )
 
 type Storage interface {
 	UserByName(ctx context.Context, username string) (*models.User, error)
 	UserByUUID(ctx context.Context, uuid string) (*models.User, error)
-	CreateNewUser(ctx context.Context, username, email string, passHash []byte) (string, error)
+	SearchEmail(ctx context.Context, email string) (bool, error)
+	CreateNewUser(ctx context.Context, username, email string, passHash []byte) error
 }
 
 type Cash interface {
@@ -33,6 +35,7 @@ type Cash interface {
 }
 
 type Broker interface {
+	ResetPassword(ctx context.Context, email string) error
 }
 
 type Service struct {
@@ -53,33 +56,31 @@ func New(log *slog.Logger, storage Storage, cash Cash, broker Broker, token conf
 	}
 }
 
-func (s *Service) SignUp(username, email, password string) (string, error) {
+func (s *Service) SignUp(username, email, password string) error {
 	const op = "service.auth.SignUp"
-
-	_ = s.log.With(slog.String("op", op))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	u, err := s.storage.UserByName(ctx, username)
 	if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
-		return "", fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	if u != nil {
-		return "", fmt.Errorf("%s: %w", op, storage.ErrUserExists)
+		return fmt.Errorf("%s: %w", op, storage.ErrUserExists)
 	}
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	uuid, err := s.storage.CreateNewUser(ctx, username, email, passHash)
+	err = s.storage.CreateNewUser(ctx, username, email, passHash)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	return uuid, nil
+	return nil
 }
 
 func (s *Service) Login(username, password string) (string, string, error) {
@@ -109,8 +110,8 @@ func (s *Service) Login(username, password string) (string, string, error) {
 	return accessToken, refreshToken, nil
 }
 
-func (s *Service) RefreshTokens(token string) (string, string, error) {
-	const op = "service.auth.RefreshTokens"
+func (s *Service) RefreshToken(token string) (string, string, error) {
+	const op = "service.auth.RefreshToken"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -164,4 +165,26 @@ func (s *Service) RefreshTokens(token string) (string, string, error) {
 	}
 
 	return accessToken, refreshToken, nil
+}
+
+func (s *Service) ResetPassword(email string) error {
+	const op = "service.auth.ResetPassword"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	found, err := s.storage.SearchEmail(ctx, email)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	if !found {
+		return fmt.Errorf("%s: %w", op, storage.ErrEmailNotFound)
+	}
+
+	err = s.broker.ResetPassword(ctx, email)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }

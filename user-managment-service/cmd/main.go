@@ -36,6 +36,7 @@ func main() {
 		log.Error("failed to init storage", sl.Error(err))
 		os.Exit(1)
 	}
+	log.Debug("storage initialized")
 
 	// Cash
 	cash, err := redis.New(cfg.Cash)
@@ -43,12 +44,15 @@ func main() {
 		log.Error("failed to init cash", sl.Error(err))
 		os.Exit(1)
 	}
+	log.Debug("cash initialized")
 
 	// Broker
-	broker := rabbitmq.Broker{} // rabbitmq.New(cfg.Broker)
+	broker, err := rabbitmq.New(cfg.Broker)
 	if err != nil {
 		log.Error("failed to init message broker", sl.Error(err))
+		os.Exit(1)
 	}
+	log.Debug("broker initialized")
 
 	// Service layer
 	authService := authservice.New(log, storage, cash, broker, cfg.Token)
