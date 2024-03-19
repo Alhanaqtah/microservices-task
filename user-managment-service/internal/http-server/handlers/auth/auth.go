@@ -15,7 +15,7 @@ import (
 )
 
 type Service interface {
-	SignUp(username, password string) (string, error)
+	SignUp(username, email, password string) (string, error)
 	Login(username, password string) (string, string, error)
 	RefreshTokens(token string) (string, string, error)
 }
@@ -56,13 +56,13 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.Username == "" || user.Password == "" {
+	if user.Username == "" || user.Password == "" || user.Email == "" {
 		log.Debug("failed to signup user: invalid credentials")
 		render.JSON(w, r, resp.Err("invalid credentials"))
 		return
 	}
 
-	uuid, err := h.service.SignUp(user.Username, user.Password)
+	uuid, err := h.service.SignUp(user.Username, user.Email, user.Password)
 	if err != nil {
 		log.Debug("failed to signup user", sl.Error(err))
 		if errors.As(err, &service.ErrUserExists) {

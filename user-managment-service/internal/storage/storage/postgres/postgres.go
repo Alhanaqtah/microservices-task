@@ -30,34 +30,34 @@ func New(cfg config.Storage) (*Storage, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	/* _, err = pool.Exec(context.Background(), `
-	CREATE TYPE ROLE AS ENUM('user', 'admin', 'moderator');
+	/* 	_, err = pool.Exec(context.Background(), `
+	   	CREATE TYPE ROLE AS ENUM('user', 'admin', 'moderator');
 
-	CREATE TABLE IF NOT EXISTS groups (
-		id SERIAL PRIMARY KEY,
-		name TEXT UNIQUE NOT NULL,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-	);
+	   	CREATE TABLE IF NOT EXISTS groups (
+	   		id SERIAL PRIMARY KEY,
+	   		name TEXT UNIQUE NOT NULL,
+	   		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	   	);
 
-	CREATE TABLE IF NOT EXISTS users (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name VARCHAR(100) DEFAULT '',
-		surname VARCHAR(100) DEFAULT '',
-		username TEXT UNIQUE NOT NULL,
-		pass_hash BYTEA NOT NULL,
-		phone_number VARCHAR(20) DEFAULT '',
-		email VARCHAR(255) DEFAULT '',
-		role ROLE DEFAULT 'user',
-		group_id INTEGER REFERENCES groups(id),
-		image_s3_path TEXT DEFAULT '',
-		is_blocked BOOLEAN DEFAULT false,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-		modified_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-	);
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	} */
+	   	CREATE TABLE IF NOT EXISTS users (
+	   		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	   		name VARCHAR(100) DEFAULT '',
+	   		surname VARCHAR(100) DEFAULT '',
+	   		username TEXT UNIQUE NOT NULL,
+	   		pass_hash BYTEA NOT NULL,
+	   		phone_number VARCHAR(20) DEFAULT '',
+	   		email VARCHAR(255) UNIQUE NOT NULL,
+	   		role ROLE DEFAULT 'user',
+	   		group_id INTEGER REFERENCES groups(id),
+	   		image_s3_path TEXT DEFAULT '',
+	   		is_blocked BOOLEAN DEFAULT false,
+	   		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	   		modified_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	   	);
+	   	`)
+	   	if err != nil {
+	   		return nil, fmt.Errorf("%s: %w", op, err)
+	   	} */
 
 	return &Storage{pool: pool}, nil
 }
@@ -166,12 +166,12 @@ func (s *Storage) UserByName(ctx context.Context, username string) (*models.User
 	return &user, nil
 }
 
-func (s *Storage) CreateNewUser(ctx context.Context, username string, passHash []byte) (string, error) {
+func (s *Storage) CreateNewUser(ctx context.Context, username string, email string, passHash []byte) (string, error) {
 	const op = "storage.postgres.CreateNewUser"
 
 	var id string
 
-	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, pass_hash) VALUES ($1, $2) RETURNING id`, username, passHash).Scan(&id)
+	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, email, pass_hash) VALUES ($1, $2, $3) RETURNING id`, username, email, passHash).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}

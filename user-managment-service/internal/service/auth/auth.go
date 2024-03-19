@@ -24,7 +24,7 @@ var (
 type Storage interface {
 	UserByName(ctx context.Context, username string) (*models.User, error)
 	UserByUUID(ctx context.Context, uuid string) (*models.User, error)
-	CreateNewUser(ctx context.Context, username string, passHash []byte) (string, error)
+	CreateNewUser(ctx context.Context, username, email string, passHash []byte) (string, error)
 }
 
 type Cash interface {
@@ -53,7 +53,7 @@ func New(log *slog.Logger, storage Storage, cash Cash, broker Broker, token conf
 	}
 }
 
-func (s *Service) SignUp(username, password string) (string, error) {
+func (s *Service) SignUp(username, email, password string) (string, error) {
 	const op = "service.auth.SignUp"
 
 	_ = s.log.With(slog.String("op", op))
@@ -74,7 +74,7 @@ func (s *Service) SignUp(username, password string) (string, error) {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	uuid, err := s.storage.CreateNewUser(ctx, username, passHash)
+	uuid, err := s.storage.CreateNewUser(ctx, username, email, passHash)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}

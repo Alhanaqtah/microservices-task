@@ -3,7 +3,6 @@ package jwt
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
@@ -50,8 +49,6 @@ func NewRefreshToken(user *models.User, cfg config.Token) (string, error) {
 
 func GetClaim(claims map[string]interface{}, claim string) (string, error) {
 	const op = "GetClaim"
-
-	log.Printf("CLAIMS: %#v", claims)
 
 	c, ok := claims[claim]
 	if !ok {
