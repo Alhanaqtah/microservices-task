@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+
 	"user-managment-service/internal/config"
 	"user-managment-service/internal/lib/logger/sl"
 	resp "user-managment-service/internal/lib/response"

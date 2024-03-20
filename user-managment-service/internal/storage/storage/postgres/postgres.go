@@ -67,16 +67,12 @@ func (s *Storage) UserByUUID(ctx context.Context, username string) (*models.User
 
 	row := s.pool.QueryRow(ctx, `
 		SELECT
-			id,
 			name,
 			surname,
 			username,
-			pass_hash,
 			phone_number,
 			email,
 			role,
-			group_id,
-			image_s3_path,
 			is_blocked,
 			created_at,
 			modified_at
@@ -86,16 +82,12 @@ func (s *Storage) UserByUUID(ctx context.Context, username string) (*models.User
 	var groupID sql.NullInt64
 	var user models.User
 	err := row.Scan(
-		&user.UUID,
 		&user.Name,
 		&user.Surname,
 		&user.Username,
-		&user.PassHash,
 		&user.PhoneNumber,
 		&user.Email,
 		&user.Role,
-		&groupID,
-		&user.ImageS3Path,
 		&user.IsBlocked,
 		&user.CreatedAt,
 		&user.ModifiedAt,

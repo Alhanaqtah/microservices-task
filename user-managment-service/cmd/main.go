@@ -14,9 +14,11 @@ import (
 	"user-managment-service/internal/config"
 	authhandler "user-managment-service/internal/http-server/handlers/auth"
 	"user-managment-service/internal/http-server/handlers/healthcheck"
+	userhabdler "user-managment-service/internal/http-server/handlers/user"
 	"user-managment-service/internal/lib/logger"
 	"user-managment-service/internal/lib/logger/sl"
 	authservice "user-managment-service/internal/service/auth"
+	userservice "user-managment-service/internal/service/user"
 	"user-managment-service/internal/storage/storage/postgres"
 
 	"github.com/go-chi/chi"
@@ -56,17 +58,19 @@ func main() {
 
 	// Service layer
 	authService := authservice.New(log, storage, cash, broker, cfg.Token)
+	userService := userservice.New(log, storage)
 
 	// Constroller layer
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 
 	auth := authhandler.New(log, authService, cfg.Token)
+	user := userhabdler.New(log, userService, cfg.Token)
 
 	r.HandleFunc("/healthcheck", healthcheck.Register())
 	// r.Route("/users", nil)
 	r.Route("/auth", auth.Register())
-	// r.Route("/user", nil)
+	r.Route("/user", user.Register())
 
 	// Server
 	srv := http.Server{
