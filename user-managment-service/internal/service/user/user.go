@@ -11,11 +11,13 @@ import (
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
+	ErrUserNotFound     = errors.New("user not found")
+	ErrNoFieldsToUpdate = errors.New("no fields to update")
 )
 
 type Storage interface {
 	UserByUUID(ctx context.Context, uuid string) (*models.User, error)
+	PatchUser(ctx context.Context, uuid string, user *models.User) (*models.User, error)
 }
 
 type Service struct {
@@ -45,4 +47,21 @@ func (s *Service) UserByUUID(uuid string) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *Service) PatchUser(uuid string, user *models.User) (*models.User, error) {
+	const op = "service.user.PatchUser"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	info, err := s.storage.PatchUser(ctx, uuid, user)
+	if err != nil {
+		if errors.Is(err, storage.ErrNoFieldsToUpdate) {
+			return nil, fmt.Errorf("%s: %w", op, ErrNoFieldsToUpdate)
+		}
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return info, nil
 }

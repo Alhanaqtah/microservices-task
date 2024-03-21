@@ -19,6 +19,7 @@ import (
 
 type Service interface {
 	UserByUUID(uuid string) (*models.User, error)
+	PatchUser(uuid string, user *models.User) (*models.User, error)
 }
 
 type Handler struct {
@@ -40,7 +41,6 @@ func (h *Handler) Register() func(r chi.Router) {
 		r.Get("/me", h.get)
 		r.Patch("/me", h.patch)
 		r.Delete("/me", h.delete)
-
 	}
 }
 
@@ -59,9 +59,8 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
-	claims := token.Claims.(gojwt.MapClaims)
 
-	log.Debug("", slog.Any("claims", claims))
+	claims := token.Claims.(gojwt.MapClaims)
 
 	uuid, err := jwt.GetClaim(claims, "sub")
 	if err != nil {
@@ -85,7 +84,50 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) patch(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.user.patch"
 
+	log := h.log.With(slog.String("op", op))
+
+	// Retrive user id
+	tokenString := jwtauth.TokenFromHeader(r)
+	token, err := gojwt.Parse(tokenString, func(t *gojwt.Token) (interface{}, error) {
+		return []byte(h.tokenCfg.JWT.Secret), nil
+	})
+	if err != nil {
+		log.Error("failed to patch user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	claims := token.Claims.(gojwt.MapClaims)
+
+	uuid, err := jwt.GetClaim(claims, "sub")
+	if err != nil {
+		log.Error("failed to patch user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	var user models.User
+	err = render.DecodeJSON(r.Body, &user)
+	if err != nil {
+		log.Error("failed to patch user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	u, err := h.service.PatchUser(uuid, &user)
+	if err != nil {
+		log.Error("failed to patch user", sl.Error(err))
+		if errors.As(err, &service.ErrNoFieldsToUpdate) {
+			render.JSON(w, r, resp.Err("no fields to update"))
+			return
+		}
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	render.JSON(w, r, u)
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {

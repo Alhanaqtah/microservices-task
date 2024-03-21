@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"user-managment-service/internal/config"
 	"user-managment-service/internal/models"
@@ -179,4 +182,48 @@ func (s *Storage) CreateNewUser(ctx context.Context, username string, email stri
 	}
 
 	return nil
+}
+
+func (s *Storage) PatchUser(ctx context.Context, uuid string, user *models.User) (*models.User, error) {
+	const op = "storage.postgres.PatchUser"
+
+	var args []interface{}
+	var attrs []string
+	if user.Name != "" {
+		args = append(args, user.Name)
+		attrs = append(attrs, "name=$")
+	}
+	if user.Surname != "" {
+		args = append(args, user.Surname)
+		attrs = append(attrs, "surname=$")
+	}
+	if user.Username != "" {
+		args = append(args, user.Username)
+		attrs = append(attrs, "username=$")
+	}
+	if user.PhoneNumber != "" {
+		args = append(args, user.PhoneNumber)
+		attrs = append(attrs, "phone_number=$")
+	}
+	if len(args) == 0 {
+		return nil, fmt.Errorf("%s: %w", op, storage.ErrNoFieldsToUpdate)
+	}
+
+	for i := range attrs {
+		attrs[i] += strconv.Itoa(i + 1)
+	}
+
+	args = append(args, time.Now().UTC().Format(time.RFC3339), uuid)
+
+	queryAttrs := strings.Join(attrs, ", ")
+
+	query := "UPDATE users SET " + queryAttrs + ", modified_at=$" + strconv.Itoa(len(attrs)+1) + " WHERE id=$" + strconv.Itoa(len(attrs)+2) + " RETURNING name, surname, username, phone_number, email, role, is_blocked, created_at, modified_at"
+
+	var u models.User
+	err := s.pool.QueryRow(ctx, query, args...).Scan(&u.Name, &u.Surname, &u.Username, &u.PhoneNumber, &u.Email, &u.Role, &u.IsBlocked, &u.CreatedAt, &u.ModifiedAt)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return &u, nil
 }
