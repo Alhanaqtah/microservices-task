@@ -227,3 +227,14 @@ func (s *Storage) PatchUser(ctx context.Context, uuid string, user *models.User)
 
 	return &u, nil
 }
+
+func (s *Storage) Delete(ctx context.Context, uuid string) error {
+	const op = "storage.postgres.CreateNewUser"
+
+	_, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, uuid)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}

@@ -18,6 +18,7 @@ var (
 type Storage interface {
 	UserByUUID(ctx context.Context, uuid string) (*models.User, error)
 	PatchUser(ctx context.Context, uuid string, user *models.User) (*models.User, error)
+	Delete(ctx context.Context, uuid string) error
 }
 
 type Service struct {
@@ -64,4 +65,18 @@ func (s *Service) PatchUser(uuid string, user *models.User) (*models.User, error
 	}
 
 	return info, nil
+}
+
+func (s *Service) Delete(uuid string) error {
+	const op = "service.user.Delete"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := s.storage.Delete(ctx, uuid)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }

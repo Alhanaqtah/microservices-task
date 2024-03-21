@@ -20,6 +20,7 @@ import (
 type Service interface {
 	UserByUUID(uuid string) (*models.User, error)
 	PatchUser(uuid string, user *models.User) (*models.User, error)
+	Delete(uuid string) error
 }
 
 type Handler struct {
@@ -131,7 +132,38 @@ func (h *Handler) patch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.user.delete"
 
+	log := h.log.With(slog.String("op", op))
+
+	// Retrive user id
+	tokenString := jwtauth.TokenFromHeader(r)
+	token, err := gojwt.Parse(tokenString, func(t *gojwt.Token) (interface{}, error) {
+		return []byte(h.tokenCfg.JWT.Secret), nil
+	})
+	if err != nil {
+		log.Error("failed to delete user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	claims := token.Claims.(gojwt.MapClaims)
+
+	uuid, err := jwt.GetClaim(claims, "sub")
+	if err != nil {
+		log.Error("failed to delete user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	err = h.service.Delete(uuid)
+	if err != nil {
+		log.Error("failed to delete atch user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	render.JSON(w, r, resp.Ok())
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
